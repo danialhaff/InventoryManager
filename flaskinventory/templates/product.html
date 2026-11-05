@@ -1,129 +1,118 @@
 {% extends "overview.html" %}
+{% block title %}Products{% endblock %}
+{% block section_name %}Products{% endblock %}
 {% block content %}
-<div class="container">
-  {% with messages = get_flashed_messages(with_categories=true) %}
-     {%if messages %}
-          {%for category, message in messages %}
-            <div class="alert alert-{{ category }}">
-               <h4 style="text-align:center;">{{ message }}</h4>
-            </div>
-          {%endfor%}
-    {%endif %}
-  {%endwith%}
-</div>
-<div class="container">
+<section class="page-heading">
+  <div>
+    <div class="eyebrow">CATALOG MANAGEMENT</div>
+    <h1>Products</h1>
+    <p>Manage product details, minimum stock alerts, and archived records.</p>
+  </div>
+  <div class="heading-actions">
+    <button type="button" class="button button-primary" data-toggle="modal" data-target="#addProductModal"><span aria-hidden="true">＋</span> Add product</button>
+  </div>
+</section>
 
-<h1>Products</h1>
-<div >
-  <h3 style="display: inline-block;margin:0;"> Manage products in your central Warehouse</h3>
-  <button type="button" class="btn btn-add" data-toggle="modal" data-target="#exampleModal">
-   <span class="btn-icon-add"><i class="glyphicon glyphicon-plus"></i></span>Add Product</button>
-</div>
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Product catalog</h2>
+      <p>Set the starting warehouse quantity when adding a product; use transfers to move stock.</p>
+    </div>
+    <span class="record-count">{{ total }} products</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table data-table">
+      <thead>
+        <tr><th>PRODUCT</th><th>WAREHOUSE STOCK</th><th>MINIMUM</th><th>STATUS</th><th class="text-right">ACTIONS</th></tr>
+      </thead>
+      <tbody>
+        {% for item in details %}
+          <tr>
+            <td><span class="product-cell-mark">{{ item.prod_name[:1]|upper }}</span><strong>{{ item.prod_name }}</strong></td>
+            <td><span class="stock-number {% if item.prod_qty > 0 %}stock-number-positive{% endif %}">{{ "{:,}".format(item.prod_qty) }}</span><span class="quantity-unit">units</span></td>
+            <td>{{ "{:,}".format(item.low_stock_threshold) }} units</td>
+            <td>{% if item.active %}<span class="status-badge status-active">Active</span>{% else %}<span class="status-badge">Archived</span>{% endif %}</td>
+            <td class="actions-cell">
+              <div class="actions-group">
+                <button type="button" class="button button-secondary button-sm" data-toggle="modal" data-target="#editProduct{{ item.prod_id }}"><span aria-hidden="true">✎</span> Edit</button>
+                <form class="inline-form" method="post" action="{{ url_for('archive', entity_type='product', entity_id=item.prod_id) }}" onsubmit="return confirm('{{ 'Archive' if item.active else 'Restore' }} this product? Its history and stock will be retained.');">
+                  {{ archive_form.csrf_token(id="archive-product-csrf-" ~ item.prod_id) }}
+                  <input type="hidden" name="action" value="{{ 'archive' if item.active else 'restore' }}">
+                  <button type="submit" class="button {% if item.active %}button-danger{% else %}button-secondary{% endif %} button-sm">{{ 'Archive' if item.active else 'Restore' }}</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5"><div class="empty-state"><span class="empty-icon">▦</span><strong>No products yet</strong><span>Add products to start tracking stock in your warehouse.</span><button type="button" class="button button-primary" data-toggle="modal" data-target="#addProductModal">Add your first product</button></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
 
-<!-- add Modal code-->
-<div class="modal fade" id="exampleModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true" style="margin-top:150px;">
-  <div class="modal-dialog" role="document">
+<div class="modal fade" id="addProductModal" tabindex="-1" role="dialog" aria-labelledby="addProductTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
     <div class="modal-content">
-      <div class="modal-header">
-        <h3 class="modal-title" id="exampleModalLabel">Add Product</h3>
-        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-          <span aria-hidden="true">&times;</span>
-        </button>
-      </div>
-      <div id="modal-cont" class="modal-body" >
-        <form  action="" method="POST" id="products">
-          {{ form.csrf_token() }}
-          {{form.prodname.label(class="form-control-label")}}<br>
-          {{ form.prodname(class="form-control form-control-lg") }}
-
-          {{form.prodqty.label(class="form-control-label")}}<br>
-          <div class="prodname">
-            {{form.prodqty(class="form-control form-control-lg")}}
-          </div>
-
-
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-        <div >
-          {{ form.prodsubmit(class="btn btn-primary") }}
+      <form method="post" action="{{ url_for('product') }}">
+        {{ form.hidden_tag() }}
+        <div class="modal-header">
+          <div><div class="eyebrow">PRODUCT CATALOG</div><h2 class="modal-title" id="addProductTitle">Add product</h2></div>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
         </div>
-      </div>
-    </form>
-   </div>
- </div>
-
+        <div class="modal-body">
+          <label for="{{ form.prodname.id }}">Product name</label>
+          {{ form.prodname(class="form-control", placeholder="e.g. Packing boxes") }}
+          <label for="{{ form.prodqty.id }}">Starting warehouse stock</label>
+          {{ form.prodqty(class="form-control", placeholder="Enter quantity", min="1") }}
+          <label for="{{ form.threshold.id }}">Low stock threshold</label>
+          {{ form.threshold(class="form-control", placeholder="0 disables alerts", min="0") }}
+          <span class="field-hint">A threshold of 0 disables low-stock alerts.</span>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="button button-secondary" data-dismiss="modal">Cancel</button>
+          {{ form.prodsubmit(class="button button-primary", value="Save product") }}
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
-<!--end of modal design-->
 
-<table class="table table-hover">
-<thead>
- <tr>
-   <th>ID</th>
-   <th>Product Name</th>
-   <th>Unallocated Quantity</th>
-   <th></th>
-   <th></th>
- </tr>
-</thead>
-<tbody>
-  {% for d in details %}
-  <tr>
-   <td>{{d.prod_id}}</td>
-   <td>{{d.prod_name}}</td>
-   <td>{{d.prod_qty}}</td>
-   <td>
-       <button type="button" class="btn btn-edit" data-toggle="modal" data-target = "#edit{{d.prod_id}}" >
-       <span class="btn-icon"><i class="glyphicon glyphicon-pencil"></i></span>Edit</button>
-
-   </td>
-   <!--editmodal-->
-   <div class="modal fade" id="edit{{d.prod_id}}" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true" style="margin-top:150px;">
-     <div class="modal-dialog" role="document">
-       <div class="modal-content">
-         <div class="modal-header">
-           <h3 class="modal-title" id="exampleModalLabel">Edit Product</h3>
-           <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-             <span aria-hidden="true">&times;</span>
-           </button>
-         </div>
-         <div id="modal-cont" class="modal-body" >
-           <form  action="" method="POST" id="products">
-             <input type="hidden" name="productid" value="{{d.prod_id}}"/>
-             <input type="hidden" name="productname" value="{{d.prod_name}}"/>
-             {{ eform.csrf_token() }}
-             {{eform.editname.label(class="form-control-label")}}<br>
-             {{ eform.editname(class="form-control form-control-lg",placeholder=d.prod_name) }}
-
-             {{eform.editqty.label(class="form-control-label")}}<br>
-             {{eform.editqty(class="form-control form-control-lg",placeholder=d.prod_qty)}}
-         </div>
-         <div class="modal-footer">
-           <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-           <div >
-              <!--<a href="{{ url_for('product', p_id = d.prod_id) }}">-->
-             {{ eform.editsubmit(class="btn btn-primary") }}
-             <!--</a>-->
-           </div>
-         </div>
-       </form>
+{% for item in details %}
+  <div class="modal fade" id="editProduct{{ item.prod_id }}" tabindex="-1" role="dialog" aria-labelledby="editProductTitle{{ item.prod_id }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <form method="post" action="{{ url_for('product') }}">
+          {{ eform.hidden_tag() }}
+          <input type="hidden" name="productid" value="{{ item.prod_id }}">
+          <input type="hidden" name="productname" value="{{ item.prod_name }}">
+          <div class="modal-header">
+            <div><div class="eyebrow">PRODUCT CATALOG</div><h2 class="modal-title" id="editProductTitle{{ item.prod_id }}">Edit product</h2></div>
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+          </div>
+          <div class="modal-body">
+            <label for="editProductName{{ item.prod_id }}">Product name</label>
+            <input class="form-control" type="text" name="{{ eform.editname.name }}" id="editProductName{{ item.prod_id }}" value="{{ item.prod_name }}" required>
+            <label for="editProductThreshold{{ item.prod_id }}">Low stock threshold</label>
+            <input class="form-control" type="number" name="{{ eform.threshold.name }}" id="editProductThreshold{{ item.prod_id }}" value="{{ item.low_stock_threshold }}" min="0" max="1000000" required>
+            <span class="field-hint">Current warehouse stock: {{ item.prod_qty }} units. Use transfers to change stock levels.</span>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="button button-secondary" data-dismiss="modal">Cancel</button>
+            {{ eform.editsubmit(class="button button-primary", value="Save changes") }}
+          </div>
+        </form>
       </div>
     </div>
+  </div>
+{% endfor %}
 
-   </div>
-   <!--editmodal end-->
-   <td>
-      <a href="{{ url_for('delete', p_id = d.prod_id,type ='product') }}">
-       <button type="button" class="btn btn-delete">
-       <span class="btn-icon"><i class="glyphicon glyphicon-trash"></i></span>Delete</button></a>
-   </td>
- </tr>
-{%endfor%}
-</tbody>
-
-</table>
-<script type="text/javascript">
-
-</script>
-
+{% if total_pages > 1 %}
+  <nav class="pagination-bar" aria-label="Product pages">
+    {% if page > 1 %}<a class="button button-secondary button-sm" href="{{ url_for('product', page=page-1) }}">Previous</a>{% endif %}
+    <span>Page {{ page }} of {{ total_pages }} · {{ total }} products</span>
+    {% if page < total_pages %}<a class="button button-secondary button-sm" href="{{ url_for('product', page=page+1) }}">Next</a>{% endif %}
+  </nav>
+{% endif %}
 {% endblock content %}

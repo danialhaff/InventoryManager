@@ -1,98 +1,175 @@
 {% extends "overview.html" %}
+{% block title %}Transfers{% endblock %}
+{% block section_name %}Transfers{% endblock %}
 {% block content %}
-  <div class="container">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-       {%if messages %}
-            {%for category, message in messages %}
-              <div class="alert alert-{{ category }}">
-                <h4 style="text-align:center;">{{ message }}</h4>
-              </div>
-            {%endfor%}
-      {%endif %}
-    {%endwith%}
+<section class="page-heading">
+  <div>
+    <div class="eyebrow">STOCK MOVEMENT</div>
+    <h1>Transfers</h1>
+    <p>Move stock between active locations. Archived stock remains available to transfer out.</p>
   </div>
-  <div class="container">
+  <button type="button" class="button button-primary" data-toggle="modal" data-target="#moveProductModal">
+    <span aria-hidden="true">⇄</span> New transfer
+  </button>
+</section>
 
-<h1>Transfers</h1>
-<div >
-  <h3 style="display: inline-block;margin:0;"> Manage product movement</h3>
-  <button type="button" class="btn btn-add" data-toggle="modal" data-target="#exampleModal">
-   <span class="btn-icon-add"><i class="glyphicon glyphicon-plus"></i></span>Move Product</button>
-</div>
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Transfer activity</h2>
+      <p>A complete history of stock moving through your inventory.</p>
+    </div>
+    <span class="record-count">{{ total }} transfers</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table data-table">
+      <thead>
+        <tr><th>TRANSFER</th><th>ROUTE</th><th>PRODUCT</th><th class="text-right">QUANTITY</th><th class="text-right">ACTIONS</th></tr>
+      </thead>
+      <tbody>
+        {% for item in details %}
+          <tr>
+            <td><strong>{{ item.ts.strftime('%b %d, %Y') }}</strong><br><span class="record-id">{{ item.ts.strftime('%H:%M') }} · #{{ item.mid }}</span></td>
+            <td><span class="movement-route">{{ item.frm }}<span class="route-arrow">→</span>{{ item.to }}</span></td>
+            <td><span class="product-cell-mark">{{ item.pname[:1]|upper }}</span><strong>{{ item.pname }}</strong></td>
+            <td class="text-right"><span class="quantity-pill">{{ "{:,}".format(item.pqty) }}</span><span class="quantity-unit">units</span></td>
+            <td class="actions-cell">
+              <div class="actions-group">
+                <button type="button" class="button button-secondary button-sm" data-toggle="modal" data-target="#editTransfer{{ item.mid }}"><span aria-hidden="true">✎</span> Edit</button>
+                <form class="inline-form" method="post" action="{{ url_for('delete_movement', movement_id=item.mid) }}" onsubmit="return confirm('Delete this transfer and restore its stock balances?');">
+                  {{ delete_form.csrf_token(id="delete-transfer-csrf-" ~ item.mid) }}
+                  <button type="submit" class="button button-danger button-sm"><span aria-hidden="true">×</span> Delete</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5"><div class="empty-state"><span class="empty-icon">⇄</span><strong>No transfers recorded</strong><span>When you move stock, your activity will appear here.</span><button type="button" class="button button-primary" data-toggle="modal" data-target="#moveProductModal">Create a transfer</button></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if total_pages > 1 %}
+    <nav class="pagination-bar" aria-label="Transfer pages">
+      {% if page > 1 %}<a class="button button-secondary button-sm" href="{{ url_for('move', page=page-1) }}">Previous</a>{% endif %}
+      <span>Page {{ page }} of {{ total_pages }} · {{ total }} transfers</span>
+      {% if page < total_pages %}<a class="button button-secondary button-sm" href="{{ url_for('move', page=page+1) }}">Next</a>{% endif %}
+    </nav>
+  {% endif %}
+</section>
 
-<!-- Modal code-->
-<div class="modal fade" id="exampleModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true" style="margin-top:150px;">
-  <div class="modal-dialog" role="document">
+{% for item in details %}
+  <div class="modal fade" id="editTransfer{{ item.mid }}" tabindex="-1" role="dialog" aria-labelledby="editTransferTitle{{ item.mid }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered transfer-modal" role="document">
+      <div class="modal-content">
+        <form method="post" action="{{ url_for('move') }}">
+          {{ form.csrf_token(id="edit-transfer-csrf-" ~ item.mid) }}
+          <input type="hidden" name="movement_id" value="{{ item.mid }}">
+          <div class="modal-header">
+            <div><div class="eyebrow">STOCK MOVEMENT · #{{ item.mid }}</div><h2 class="modal-title" id="editTransferTitle{{ item.mid }}">Edit transfer</h2></div>
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+          </div>
+          <div class="modal-body">
+            <label for="editTransferProduct{{ item.mid }}">Product</label>
+            <select class="form-control" id="editTransferProduct{{ item.mid }}" name="{{ form.mprodname.name }}" required>
+              {% for product in products %}
+                <option value="{{ product.prod_name }}" {% if item.pname == product.prod_name %}selected{% endif %}>{{ product.prod_name }}</option>
+              {% endfor %}
+            </select>
+            <div class="move-flow">
+              <div>
+                <label for="editTransferSource{{ item.mid }}">From</label>
+                <select class="form-control" id="editTransferSource{{ item.mid }}" name="{{ form.src.name }}" required>
+                  <option value="Warehouse" {% if item.frm == 'Warehouse' %}selected{% endif %}>Warehouse</option>
+                  {% for location in locations %}
+                    <option value="{{ location.loc_name }}" {% if item.frm == location.loc_name %}selected{% endif %}>{{ location.loc_name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="move-flow-arrow" aria-hidden="true">→</div>
+              <div>
+                <label for="editTransferDestination{{ item.mid }}">To</label>
+                <select class="form-control" id="editTransferDestination{{ item.mid }}" name="{{ form.destination.name }}" required>
+                  <option value="Warehouse" {% if item.to == 'Warehouse' %}selected{% endif %}>Warehouse</option>
+                  {% for location in locations %}
+                    <option value="{{ location.loc_name }}" {% if item.to == location.loc_name %}selected{% endif %}>{{ location.loc_name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+            <label for="editTransferTime{{ item.mid }}">Transfer date and time</label>
+            <input class="form-control" type="datetime-local" id="editTransferTime{{ item.mid }}" name="{{ form.ts.name }}" value="{{ item.ts.strftime('%Y-%m-%dT%H:%M') }}" step="60" required>
+            <label for="editTransferQuantity{{ item.mid }}">Quantity to move</label>
+            <input class="form-control" type="number" id="editTransferQuantity{{ item.mid }}" name="{{ form.mprodqty.name }}" value="{{ item.pqty }}" min="1" max="1000000" required>
+            <span class="field-hint">Stock balances will be adjusted when you save.</span>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="button button-secondary" data-dismiss="modal">Cancel</button>
+            <button type="submit" class="button button-primary" name="{{ form.movesubmit.name }}" value="Update transfer">Save changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endfor %}
+
+<div class="modal fade" id="moveProductModal" tabindex="-1" role="dialog" aria-labelledby="moveProductTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered transfer-modal" role="document">
     <div class="modal-content">
-      <div class="modal-header">
-
-        <h3 class="modal-title" id="exampleModalLabel">Move Product</h3>
-        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-          <span aria-hidden="true">&times;</span>
-        </button>
-      </div>
-      <div class="modal-body">
-        <form  action="" method="post">
-          {{ form.csrf_token() }}
-
-            {{form.mprodname.label(class="form-control-label")}}<br>
-              <div id="prod">
-            {{form.mprodname(class="form-control form-control-lg")}}
+      <form method="post" action="{{ url_for('move') }}">
+        {{ form.hidden_tag() }}
+        <div class="modal-header">
+          <div><div class="eyebrow">STOCK MOVEMENT</div><h2 class="modal-title" id="moveProductTitle">New transfer</h2></div>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+        </div>
+        <div class="modal-body">
+          <label for="{{ form.mprodname.id }}">Product</label>
+          {{ form.mprodname(class="form-control") }}
+          <div class="move-flow">
+            <div>
+              <label for="{{ form.src.id }}">From</label>
+              {{ form.src(class="form-control") }}
+              <small id="source-stock-hint" class="stock-hint" aria-live="polite"></small>
+            </div>
+            <div class="move-flow-arrow" aria-hidden="true">→</div>
+            <div>
+              <label for="{{ form.destination.id }}">To</label>
+              {{ form.destination(class="form-control") }}
+            </div>
           </div>
-
-          <div id="from">
-          {{form.src.label(class="form-control-label")}}<br>
-          {{form.src(class="form-control form-control-lg")}}
-          </div>
-          <div id="to">
-          {{form.destination.label(class="form-control-label")}}<br>
-          {{form.destination(class="form-control form-control-lg")}}
-          </div>
-
-            {{form.mprodqty.label(class="form-control-label")}}<br>
-          <div class="qty">
-            {{form.mprodqty(class="form-control form-control-lg") }}
-          </div>
-
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-        <div class="move" >
-          {{ form.movesubmit(class="btn btn-primary") }}
-       </div>
-      </div>
-    </form>
+          <label for="{{ form.ts.id }}">Transfer date and time</label>
+          {{ form.ts(class="form-control", type="datetime-local", step="60", required=True) }}
+          <label for="{{ form.mprodqty.id }}">Quantity to move</label>
+          {{ form.mprodqty(class="form-control", placeholder="Enter quantity", min="1") }}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="button button-secondary" data-dismiss="modal">Cancel</button>
+          {{ form.movesubmit(class="button button-primary", value="Confirm transfer") }}
+        </div>
+      </form>
     </div>
   </div>
 </div>
-<!--end of modal design-->
 
-<table class="table table-hover">
-<thead>
- <tr>
-   <th>ID</th>
-   <th>Timestamp</th>
-   <th>From</th>
-   <th>To</th>
-   <th>Product</th>
-   <th>Quantity </th>
- </tr>
-</thead>
-<tbody>
-{%for d in details%}
- <tr>
-   <td>{{d.mid}}</td>
-   <td>{{d.ts}}</td>
-   <td>{{d.frm}}</td>
-   <td>{{d.to}}</td>
-   <td>{{d.pname}}</td>
-   <td>{{d.pqty}}</td>
- </tr>
- {% endfor %}
-</tbody>
-</table>
-
-</div>
-
-
+<script>
+var stockMap = {{ stock_map|tojson if stock_map is defined else '{}' }};
+function updateStockHint() {
+    var prodElem = document.getElementById('mprodname');
+    var srcElem = document.getElementById('src');
+    var hint = document.getElementById('source-stock-hint');
+    if (!prodElem || !srcElem || !hint) return;
+    var qty = stockMap[prodElem.value + '__' + srcElem.value] || 0;
+    hint.textContent = qty > 0
+        ? '✓ Available at ' + srcElem.value + ': ' + qty + ' unit(s)'
+        : 'No stock available at ' + srcElem.value + '.';
+    hint.className = 'stock-hint ' + (qty > 0 ? 'text-success' : 'text-danger');
+}
+document.addEventListener('DOMContentLoaded', function() {
+    var prodElem = document.getElementById('mprodname');
+    var srcElem = document.getElementById('src');
+    if (prodElem) prodElem.addEventListener('change', updateStockHint);
+    if (srcElem) srcElem.addEventListener('change', updateStockHint);
+    $('#moveProductModal').on('shown.bs.modal', updateStockHint);
+});
+</script>
 {% endblock content %}

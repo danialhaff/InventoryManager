@@ -1,0 +1,94 @@
+{% extends "overview.html" %}
+{% block title %}Reports{% endblock %}
+{% block section_name %}Reports{% endblock %}
+{% block content %}
+<section class="page-heading page-heading-compact">
+  <div>
+    <div class="eyebrow">INSIGHTS &amp; ACTIVITY</div>
+    <h1>Movement report</h1>
+    <p>Filter historical stock movements by date, product, or location, then export the matching report.</p>
+  </div>
+</section>
+
+{% for error in errors %}
+  <div class="alert alert-danger" role="alert">{{ error }}</div>
+{% endfor %}
+
+<form method="get" action="{{ url_for('reports') }}" class="panel filter-panel">
+  <div class="filter-grid">
+    <div>
+      <label for="start_date">From date</label>
+      <input class="form-control" type="date" id="start_date" name="start_date" value="{{ start_date }}">
+    </div>
+    <div>
+      <label for="end_date">To date</label>
+      <input class="form-control" type="date" id="end_date" name="end_date" value="{{ end_date }}">
+    </div>
+    <div>
+      <label for="product">Product</label>
+      <select class="form-control" id="product" name="product">
+        <option value="">All products</option>
+        {% for item in products %}
+          <option value="{{ item.prod_name }}" {% if selected_product == item.prod_name %}selected{% endif %}>{{ item.prod_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="location">Location</label>
+      <select class="form-control" id="location" name="location">
+        <option value="">All locations</option>
+        <option value="Warehouse" {% if selected_location == 'Warehouse' %}selected{% endif %}>Warehouse</option>
+        {% for item in locations %}
+          <option value="{{ item.loc_id }}" {% if selected_location == item.loc_id|string %}selected{% endif %}>{{ item.loc_name }}{% if not item.active %} · archived{% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-actions">
+      <button type="submit" class="button button-primary">Apply filters</button>
+      <button type="submit" class="button button-secondary" formaction="{{ url_for('export_report') }}">Export CSV</button>
+    </div>
+  </div>
+</form>
+
+<div class="report-summary">
+  <span><strong>{{ total_movements }}</strong> movements</span>
+  <span class="report-summary-divider" aria-hidden="true"></span>
+  <span><strong>{{ "{:,}".format(total_quantity) }}</strong> units moved</span>
+</div>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Transfer history</h2>
+      <p>{% if selected_product %}Showing results for {{ selected_product }}{% else %}All matching products{% endif %}{% if selected_location %} · filtered by {{ 'Warehouse' if selected_location == 'Warehouse' else 'selected location' }}{% endif %}</p>
+    </div>
+    <span class="record-count">{{ total }} results</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table data-table">
+      <thead>
+        <tr><th>DATE &amp; TIME</th><th>ROUTE</th><th>PRODUCT</th><th class="text-right">QUANTITY</th></tr>
+      </thead>
+      <tbody>
+        {% for movement in details %}
+          <tr>
+            <td><strong>{{ movement.ts.strftime('%b %d, %Y') }}</strong><br><span class="record-id">{{ movement.ts.strftime('%H:%M') }}</span></td>
+            <td><span class="movement-route">{{ movement.frm }}<span class="route-arrow">→</span>{{ movement.to }}</span></td>
+            <td><span class="product-cell-mark">{{ movement.pname[:1]|upper }}</span><strong>{{ movement.pname }}</strong></td>
+            <td class="text-right"><span class="quantity-pill">{{ "{:,}".format(movement.pqty) }}</span><span class="quantity-unit">units</span></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4"><div class="empty-state"><span class="empty-icon">▤</span><strong>No matching movements</strong><span>Try a wider date range or select a different product.</span></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if total_pages > 1 %}
+    <nav class="pagination-bar" aria-label="Report pages">
+      {% if page > 1 %}<a class="button button-secondary button-sm" href="{{ url_for('reports', page=page-1, start_date=start_date, end_date=end_date, product=selected_product, location=selected_location) }}">Previous</a>{% endif %}
+      <span>Page {{ page }} of {{ total_pages }} · {{ total }} matching transfers</span>
+      {% if page < total_pages %}<a class="button button-secondary button-sm" href="{{ url_for('reports', page=page+1, start_date=start_date, end_date=end_date, product=selected_product, location=selected_location) }}">Next</a>{% endif %}
+    </nav>
+  {% endif %}
+</section>
+{% endblock content %}

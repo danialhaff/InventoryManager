@@ -13,9 +13,11 @@ cd Inventory-Manager
 ## What to look for here?
 - [System Summary](#system-summary)
 - [Running the app](#running-the-app)
+- [Reports](#reports)
+- [Backups and local security](#backups-and-local-security)
 - Features
   1. [Adding Products and Locations](#adding-products-and-locations)
-  2. [Deleting Products and Locations](#deleting-products-and-locations)
+  2. [Archiving Products and Locations](#archiving-products-and-locations)
   3. [Moving Products](#moving-products)
   4. [Editing Products and Locations](#editing-products-and-locations)
 - [Built Using](#built-using)
@@ -36,7 +38,19 @@ pip3 install -r requirements.txt
 ```
 ## System Summary
 
-This system is built to simulate a warehouse environment and handles balancing quantities over warehouses. It has 4 main views including *Overview*,*Products*,*Locations* and *Transfers*. **Products** and **Locations** let you add,edit and delete entries from the system. **Transfers** lets you move items into the central warehouse, out of the central warehouse; also to and from various locations.It also displays transfer history. **Overview** will display products,warehouses and their respective balanced quantities.
+This local, single-operator system tracks warehouse and location stock, transfer history, and low-stock thresholds. The Overview, Products, Locations, Transfers, and Reports pages are paginated where appropriate. Product/location archives retain their stock and history; archived stock can be transferred out but cannot receive new stock.
+
+## Reports
+
+Open **Reports** to filter transfer history by inclusive start/end dates, product, and location. The totals cover all matching records, while the table is paginated. **Export CSV** downloads the full matching result set.
+
+## Backups and local security
+
+On the first launch that needs the SQLite schema upgrade, the app creates a timestamped database backup in `instance/` before changing the schema. Keep this backup with the database and create regular backups before making manual database changes. If an upgrade fails validation, startup stops with an error and the original database transaction is rolled back.
+
+The app is intended for one local operator, not public deployment. `run.py` binds the development server to `127.0.0.1`. Set `INVENTORY_SECRET_KEY` to a stable, private random value if you want CSRF sessions to survive application restarts; otherwise, a new secret is generated at startup.
+
+The default SQLite database is `instance/site.db`. Set `INVENTORY_DATABASE_URI` to another SQLAlchemy SQLite URI to use a different local database file. Transfer date/time entries use the local workstation clock; existing history is not rewritten during the schema upgrade.
 
 
 ## Running the app
@@ -57,8 +71,8 @@ Products require product name and quantity to be filled. Location only requires 
 ![adding](https://user-images.githubusercontent.com/25857446/56444083-e55bb880-6314-11e9-87de-8deabdc1c6a9.gif)
 
 
-### Deleting Products and Locations
-Deleting only requires a button click, although the transfers(if any) will remain in the history.
+### Archiving Products and Locations
+Archive records instead of deleting them. Existing balances and transfer history remain intact. Restore an archived record when it should accept stock again.
 
 
 ![delete](https://user-images.githubusercontent.com/25857446/56444188-5307e480-6315-11e9-83d8-afaeda5d39ff.gif)
@@ -67,10 +81,12 @@ Deleting only requires a button click, although the transfers(if any) will remai
 ### Moving products
 Here products can be moved to a location, from a location as well as to and from a location. Products need to initially be added to various locations from the central warehouse.
 
+Each transfer lets you choose its date and time. You can edit or delete a transfer later; stock balances update with the change, and transfers that can no longer be safely reversed are protected.
+
 ![mvng](https://user-images.githubusercontent.com/25857446/56446389-04137c80-6320-11e9-9c68-041db8b00a19.gif)
 
 ### Editing Products and Locations
-Change in product or loaction name creates changes in their names in the history and system overview.So, you can rectify a spelling error and still not loose any data.
+Names can be corrected without losing the associated records. Product minimum stock thresholds can be changed from the product editor. Set starting stock when creating a product, then use transfers to move quantities between locations.
 
 
 ![edit](https://user-images.githubusercontent.com/25857446/56446569-fb6f7600-6320-11e9-85e5-f67e6a454e26.gif)
@@ -83,4 +99,3 @@ Change in product or loaction name creates changes in their names in the history
 # License
 
 This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
-
