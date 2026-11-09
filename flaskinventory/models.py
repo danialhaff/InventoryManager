@@ -16,6 +16,8 @@ class Product(db.Model):
     prod_qty = db.Column(db.Integer, nullable = False)
     low_stock_threshold = db.Column(db.Integer, nullable=False, default=0, server_default='0')
     active = db.Column(db.Boolean, nullable=False, default=True, server_default='1')
+    category_id = db.Column(db.Integer, db.ForeignKey('category.cat_id', onupdate='CASCADE'))
+    category_ref = db.relationship('Category', foreign_keys=[category_id])
     __table_args__ = (
         db.CheckConstraint('prod_qty >= 0', name='ck_product_nonnegative_quantity'),
         db.CheckConstraint('low_stock_threshold >= 0', name='ck_product_nonnegative_threshold'),
@@ -23,6 +25,15 @@ class Product(db.Model):
 
     def __repr__(self):
         return f"Product('{self.prod_id}','{self.prod_name}','{self.prod_qty}')"
+
+class Category(db.Model):
+    cat_id = db.Column(db.Integer, primary_key=True)
+    cat_name = db.Column(db.String(30), unique=True, nullable=False)
+    description = db.Column(db.String(100))
+    active = db.Column(db.Boolean, nullable=False, default=True, server_default='1')
+
+    def __repr__(self):
+        return f"Category('{self.cat_id}','{self.cat_name}')"
 
 class Movement(db.Model):
     mid = db.Column(db.Integer, primary_key= True)

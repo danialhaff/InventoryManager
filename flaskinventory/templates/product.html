@@ -6,7 +6,7 @@
   <div>
     <div class="eyebrow">CATALOG MANAGEMENT</div>
     <h1>Products</h1>
-    <p>Manage product details, minimum stock alerts, and archived records.</p>
+    <p>Manage product details, categories, minimum stock alerts, and archived records.</p>
   </div>
   <div class="heading-actions">
     <button type="button" class="button button-primary" data-toggle="modal" data-target="#addProductModal"><span aria-hidden="true">＋</span> Add product</button>
@@ -21,15 +21,32 @@
     </div>
     <span class="record-count">{{ total }} products</span>
   </div>
+  <form method="get" action="{{ url_for('product') }}" class="inventory-filter">
+    <div>
+      <label for="product-category-filter">Category</label>
+      <select class="form-control" id="product-category-filter" name="category">
+        <option value="">All categories</option>
+        <option value="none" {% if selected_category == 'none' %}selected{% endif %}>No category</option>
+        {% for c in categories %}
+          <option value="{{ c.cat_id }}" {% if selected_category == c.cat_id|string %}selected{% endif %}>{{ c.cat_name }}{% if not c.active %} · archived{% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-actions">
+      <button type="submit" class="button button-primary">Filter products</button>
+      <a class="button button-secondary" href="{{ url_for('product') }}">Clear</a>
+    </div>
+  </form>
   <div class="table-responsive">
     <table class="table data-table">
       <thead>
-        <tr><th>PRODUCT</th><th>WAREHOUSE STOCK</th><th>MINIMUM</th><th>STATUS</th><th class="text-right">ACTIONS</th></tr>
+        <tr><th>PRODUCT</th><th>CATEGORY</th><th>WAREHOUSE STOCK</th><th>MINIMUM</th><th>STATUS</th><th class="text-right">ACTIONS</th></tr>
       </thead>
       <tbody>
         {% for item in details %}
           <tr>
             <td><span class="product-cell-mark">{{ item.prod_name[:1]|upper }}</span><strong>{{ item.prod_name }}</strong></td>
+            <td>{% if item.category_ref %}{{ item.category_ref.cat_name }}{% if not item.category_ref.active %} <span class="status-badge">Archived</span>{% endif %}{% else %}<span class="record-id">No category</span>{% endif %}</td>
             <td><span class="stock-number {% if item.prod_qty > 0 %}stock-number-positive{% endif %}">{{ "{:,}".format(item.prod_qty) }}</span><span class="quantity-unit">units</span></td>
             <td>{{ "{:,}".format(item.low_stock_threshold) }} units</td>
             <td>{% if item.active %}<span class="status-badge status-active">Active</span>{% else %}<span class="status-badge">Archived</span>{% endif %}</td>
@@ -45,7 +62,7 @@
             </td>
           </tr>
         {% else %}
-          <tr><td colspan="5"><div class="empty-state"><span class="empty-icon">▦</span><strong>No products yet</strong><span>Add products to start tracking stock in your warehouse.</span><button type="button" class="button button-primary" data-toggle="modal" data-target="#addProductModal">Add your first product</button></div></td></tr>
+          <tr><td colspan="6"><div class="empty-state"><span class="empty-icon">▦</span><strong>No products found</strong><span>Add products, or clear the category filter to see everything.</span><button type="button" class="button button-primary" data-toggle="modal" data-target="#addProductModal">Add a product</button></div></td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -64,6 +81,13 @@
         <div class="modal-body">
           <label for="{{ form.prodname.id }}">Product name</label>
           {{ form.prodname(class="form-control", placeholder="e.g. Packing boxes") }}
+          <label for="{{ form.prodcategory.id }}">Category</label>
+          <select class="form-control" id="{{ form.prodcategory.id }}" name="{{ form.prodcategory.name }}">
+            <option value="0">No category</option>
+            {% for c in categories if c.active %}
+              <option value="{{ c.cat_id }}">{{ c.cat_name }}</option>
+            {% endfor %}
+          </select>
           <label for="{{ form.prodqty.id }}">Starting warehouse stock</label>
           {{ form.prodqty(class="form-control", placeholder="Enter quantity", min="1") }}
           <label for="{{ form.threshold.id }}">Low stock threshold</label>
@@ -94,6 +118,13 @@
           <div class="modal-body">
             <label for="editProductName{{ item.prod_id }}">Product name</label>
             <input class="form-control" type="text" name="{{ eform.editname.name }}" id="editProductName{{ item.prod_id }}" value="{{ item.prod_name }}" required>
+            <label for="editProductCategory{{ item.prod_id }}">Category</label>
+            <select class="form-control" id="editProductCategory{{ item.prod_id }}" name="{{ eform.editprodcategory.name }}">
+              <option value="0">No category</option>
+              {% for c in categories if c.active or c.cat_id == item.category_id %}
+                <option value="{{ c.cat_id }}" {% if item.category_id == c.cat_id %}selected{% endif %}>{{ c.cat_name }}{% if not c.active %} (archived){% endif %}</option>
+              {% endfor %}
+            </select>
             <label for="editProductThreshold{{ item.prod_id }}">Low stock threshold</label>
             <input class="form-control" type="number" name="{{ eform.threshold.name }}" id="editProductThreshold{{ item.prod_id }}" value="{{ item.low_stock_threshold }}" min="0" max="1000000" required>
             <span class="field-hint">Current warehouse stock: {{ item.prod_qty }} units. Use transfers to change stock levels.</span>
@@ -110,9 +141,9 @@
 
 {% if total_pages > 1 %}
   <nav class="pagination-bar" aria-label="Product pages">
-    {% if page > 1 %}<a class="button button-secondary button-sm" href="{{ url_for('product', page=page-1) }}">Previous</a>{% endif %}
+    {% if page > 1 %}<a class="button button-secondary button-sm" href="{{ url_for('product', page=page-1, category=selected_category) }}">Previous</a>{% endif %}
     <span>Page {{ page }} of {{ total_pages }} · {{ total }} products</span>
-    {% if page < total_pages %}<a class="button button-secondary button-sm" href="{{ url_for('product', page=page+1) }}">Next</a>{% endif %}
+    {% if page < total_pages %}<a class="button button-secondary button-sm" href="{{ url_for('product', page=page+1, category=selected_category) }}">Next</a>{% endif %}
   </nav>
 {% endif %}
 {% endblock content %}

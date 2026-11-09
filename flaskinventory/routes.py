@@ -8,15 +8,17 @@ from sqlalchemy.exc import IntegrityError
 
 from flaskinventory import app, db
 from flaskinventory.forms import (
+    addcategory,
     addlocation,
     addproduct,
     archiveform,
     deletemovement,
+    editcategory,
     editlocation,
     editproduct,
     moveproduct,
 )
-from flaskinventory.models import Balance, Location, Movement, Product
+from flaskinventory.models import Balance, Category, Location, Movement, Product
 
 
 PAGE_SIZE = 25
@@ -177,6 +179,9 @@ def overview():
 @app.route('/Product', methods=['GET', 'POST'])
 def product():
     form, eform, archive_form = addproduct(), editproduct(), archiveform()
+    choices = _category_choices()
+    form.prodcategory.choices = choices
+    eform.editprodcategory.choices = choices
     if request.method == 'POST':
         product_id = request.form.get('productid')
         if product_id and eform.validate_on_submit():
@@ -184,8 +189,13 @@ def product():
             if item is None:
                 flash('The product could not be found. Refresh and try again.', 'danger')
                 return redirect(url_for('product'))
+            category_id, error = _resolve_category(eform.editprodcategory.data, item.category_id)
+            if error:
+                flash(error, 'danger')
+                return redirect(url_for('product'))
             item.prod_name = eform.editname.data.strip()
             item.low_stock_threshold = eform.threshold.data
+            item.category_id = category_id
             Balance.query.filter_by(product_id=item.prod_id).update(
                 {'product': item.prod_name}, synchronize_session=False
             )
@@ -194,10 +204,15 @@ def product():
             )
             return _commit_redirect(url_for('product'), 'Product details updated.')
         if not product_id and form.validate_on_submit():
+            category_id, error = _resolve_category(form.prodcategory.data)
+            if error:
+                flash(error, 'danger')
+                return redirect(url_for('product'))
             item = Product(
                 prod_name=form.prodname.data.strip(),
                 prod_qty=form.prodqty.data,
                 low_stock_threshold=form.threshold.data,
+                category_id=category_id,
             )
             db.session.add(item)
             return _commit_redirect(url_for('product'), f"Product '{item.prod_name}' added.")
@@ -206,16 +221,24 @@ def product():
                 for error in field_errors:
                     flash(error, 'danger')
 
+    selected_category = request.args.get('category', '').strip()
+    query = Product.query
+    if selected_category == 'none':
+        query = query.filter(Product.category_id.is_(None))
+    elif selected_category.isdigit():
+        query = query.filter(Product.category_id == int(selected_category))
+
     current_page = _requested_page()
     products, total, current_page, total_pages = _page(
-        Product.query.order_by(Product.active.desc(), Product.prod_name), current_page
+        query.order_by(Product.active.desc(), Product.prod_name), current_page
     )
     return render_template(
         'product.html', title='Products', form=form, eform=eform,
         archive_form=archive_form, details=products,
+        categories=Category.query.order_by(Category.cat_name).all(),
+        selected_category=selected_category,
         total=total, page=current_page, total_pages=total_pages,
     )
-
 
 @app.route('/Location', methods=['GET', 'POST'])
 def loc():
@@ -275,6 +298,79 @@ def _commit_redirect(endpoint, message):
         raise
     return redirect(endpoint)
 
+def _category_choices():
+    categories = Category.query.order_by(Category.active.desc(), Category.cat_name).all()
+    return [(0, 'No category')] + [
+        (c.cat_id, c.cat_name if c.active else f'{c.cat_name} (archived)')
+        for c in categories
+    ]
+
+
+def _resolve_category(category_id, current_id=None):
+    if not category_id:
+        return None, None
+    category = Category.query.filter_by(cat_id=category_id).first()
+    if category is None:
+        return None, 'The selected category no longer exists.'
+    if not category.active and category.cat_id != current_id:
+        return None, 'Archived categories cannot be assigned to products.'
+    return category.cat_id, None
+
+
+def _category_name_taken(name, exclude_id=None):
+    query = Category.query.filter(func.lower(Category.cat_name) == name.lower())
+    if exclude_id is not None:
+        query = query.filter(Category.cat_id != exclude_id)
+    return query.first() is not None
+
+
+@app.route('/Category', methods=['GET', 'POST'])
+def categories():
+    form, cform, archive_form = addcategory(), editcategory(), archiveform()
+    if request.method == 'POST':
+        category_id = request.form.get('catid')
+        if category_id and cform.validate_on_submit():
+            item = Category.query.filter_by(cat_id=category_id).first()
+            if item is None:
+                flash('The category could not be found. Refresh and try again.', 'danger')
+                return redirect(url_for('categories'))
+            name = cform.editcatname.data.strip()
+            if _category_name_taken(name, item.cat_id):
+                flash('That name is already in use. Choose a unique name and try again.', 'danger')
+                return redirect(url_for('categories'))
+            item.cat_name = name
+            item.description = (cform.editdescription.data or '').strip() or None
+            return _commit_redirect(url_for('categories'), 'Category details updated.')
+        if not category_id and form.validate_on_submit():
+            name = form.catname.data.strip()
+            if _category_name_taken(name):
+                flash('That name is already in use. Choose a unique name and try again.', 'danger')
+                return redirect(url_for('categories'))
+            item = Category(
+                cat_name=name,
+                description=(form.description.data or '').strip() or None,
+            )
+            db.session.add(item)
+            return _commit_redirect(url_for('categories'), f"Category '{item.cat_name}' added.")
+        for errors in (form.errors, cform.errors):
+            for field_errors in errors.values():
+                for error in field_errors:
+                    flash(error, 'danger')
+
+    items, total, page, total_pages = _page(
+        Category.query.order_by(Category.active.desc(), Category.cat_name), _requested_page()
+    )
+    counts = dict(
+        db.session.query(Product.category_id, func.count(Product.prod_id))
+        .filter(Product.category_id.isnot(None))
+        .group_by(Product.category_id)
+        .all()
+    )
+    return render_template(
+        'category.html', title='Categories', form=form, cform=cform,
+        archive_form=archive_form, details=items, counts=counts,
+        total=total, page=page, total_pages=total_pages,
+    )
 
 def _movement_choices(form, movement=None):
     stocked_product_ids = {
@@ -561,30 +657,33 @@ def export_report():
 
 @app.route('/Archive/<entity_type>/<int:entity_id>', methods=['POST'])
 def archive(entity_type, entity_id):
+    endpoints = {'product': 'product', 'location': 'loc', 'category': 'categories'}
+    endpoint = endpoints.get(entity_type)
+    if endpoint is None:
+        flash('Unknown record type.', 'danger')
+        return redirect(url_for('overview'))
     form = archiveform()
     if not form.validate_on_submit():
         flash('Could not verify the archive request. Refresh and try again.', 'danger')
-        return redirect(url_for('product' if entity_type == 'product' else 'loc'))
+        return redirect(url_for(endpoint))
     action = request.form.get('action')
     if action not in ('archive', 'restore'):
         flash('Choose a valid archive action and try again.', 'danger')
-        return redirect(url_for('product' if entity_type == 'product' else 'loc'))
-    model = Product if entity_type == 'product' else Location if entity_type == 'location' else None
-    if model is None:
-        flash('Unknown record type.', 'danger')
-        return redirect(url_for('overview'))
-    item = (
-        Product.query.filter_by(prod_id=entity_id).first()
-        if entity_type == 'product'
-        else Location.query.filter_by(loc_id=entity_id).first()
-    )
+        return redirect(url_for(endpoint))
+    if entity_type == 'product':
+        item = Product.query.filter_by(prod_id=entity_id).first()
+    elif entity_type == 'location':
+        item = Location.query.filter_by(loc_id=entity_id).first()
+    else:
+        item = Category.query.filter_by(cat_id=entity_id).first()
     if item is None:
         flash('That record could not be found.', 'danger')
-        return redirect(url_for('product' if entity_type == 'product' else 'loc'))
+        return redirect(url_for(endpoint))
     archive_action = action == 'archive'
     item.active = not archive_action
-    verb = 'Archived' if archive_action else 'Restored'
-    return _commit_redirect(
-        url_for('product' if entity_type == 'product' else 'loc'),
-        f"{entity_type.title()} {verb.lower()} without removing its stock or history.",
-    )
+    verb = 'archived' if archive_action else 'restored'
+    if entity_type == 'category':
+        message = f'Category {verb}. Products keep their category assignment.'
+    else:
+        message = f'{entity_type.title()} {verb} without removing its stock or history.'
+    return _commit_redirect(url_for(endpoint), message)

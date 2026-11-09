@@ -1,0 +1,113 @@
+{% extends "overview.html" %}
+{% block title %}Categories{% endblock %}
+{% block section_name %}Categories{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <div class="eyebrow">CATALOG MANAGEMENT</div>
+    <h1>Categories</h1>
+    <p>Group your products into categories. Archived categories keep their products.</p>
+  </div>
+  <button type="button" class="button button-primary" data-toggle="modal" data-target="#addCategoryModal">
+    <span aria-hidden="true">＋</span> Add category
+  </button>
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Product categories</h2>
+      <p>Add, edit and archive categories, then assign them to products.</p>
+    </div>
+    <span class="record-count">{{ total }} categories</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table data-table">
+      <thead>
+        <tr><th>CATEGORY</th><th>DESCRIPTION</th><th>PRODUCTS</th><th>STATUS</th><th class="text-right">ACTIONS</th></tr>
+      </thead>
+      <tbody>
+        {% for item in details %}
+          <tr>
+            <td><span class="product-cell-mark">{{ item.cat_name[:1]|upper }}</span><strong>{{ item.cat_name }}</strong><br><span class="record-id">CAT-{{ "%03d"|format(item.cat_id) }}</span></td>
+            <td>{{ item.description or '—' }}</td>
+            <td><a href="{{ url_for('product', category=item.cat_id) }}">{{ counts.get(item.cat_id, 0) }} products</a></td>
+            <td>{% if item.active %}<span class="status-badge status-active">Active</span>{% else %}<span class="status-badge">Archived</span>{% endif %}</td>
+            <td class="actions-cell">
+              <div class="actions-group">
+                <button type="button" class="button button-secondary button-sm" data-toggle="modal" data-target="#editCategory{{ item.cat_id }}"><span aria-hidden="true">✎</span> Edit</button>
+                <form class="inline-form" method="post" action="{{ url_for('archive', entity_type='category', entity_id=item.cat_id) }}" onsubmit="return confirm('{{ 'Archive' if item.active else 'Restore' }} this category? Its products will keep their category.');">
+                  {{ archive_form.csrf_token(id="archive-category-csrf-" ~ item.cat_id) }}
+                  <input type="hidden" name="action" value="{{ 'archive' if item.active else 'restore' }}">
+                  <button type="submit" class="button {% if item.active %}button-danger{% else %}button-secondary{% endif %} button-sm">{{ 'Archive' if item.active else 'Restore' }}</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5"><div class="empty-state"><span class="empty-icon">◈</span><strong>No categories yet</strong><span>Add a category to start organizing your products.</span><button type="button" class="button button-primary" data-toggle="modal" data-target="#addCategoryModal">Add your first category</button></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="modal fade" id="addCategoryModal" tabindex="-1" role="dialog" aria-labelledby="addCategoryTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('categories') }}">
+        {{ form.hidden_tag() }}
+        <div class="modal-header">
+          <div><div class="eyebrow">CATALOG MANAGEMENT</div><h2 class="modal-title" id="addCategoryTitle">Add category</h2></div>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+        </div>
+        <div class="modal-body">
+          <label for="{{ form.catname.id }}">Category name</label>
+          {{ form.catname(class="form-control", placeholder="e.g. Electronics") }}
+          <label for="{{ form.description.id }}">Description (optional)</label>
+          {{ form.description(class="form-control", placeholder="Short description") }}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="button button-secondary" data-dismiss="modal">Cancel</button>
+          {{ form.catsubmit(class="button button-primary", value="Save category") }}
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% for item in details %}
+  <div class="modal fade" id="editCategory{{ item.cat_id }}" tabindex="-1" role="dialog" aria-labelledby="editCategoryTitle{{ item.cat_id }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <form method="post" action="{{ url_for('categories') }}">
+          {{ cform.hidden_tag() }}
+          <input type="hidden" name="catid" value="{{ item.cat_id }}">
+          <div class="modal-header">
+            <div><div class="eyebrow">CATALOG MANAGEMENT</div><h2 class="modal-title" id="editCategoryTitle{{ item.cat_id }}">Edit category</h2></div>
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+          </div>
+          <div class="modal-body">
+            <label for="editCategoryName{{ item.cat_id }}">Category name</label>
+            <input class="form-control" type="text" name="{{ cform.editcatname.name }}" id="editCategoryName{{ item.cat_id }}" value="{{ item.cat_name }}" maxlength="30" required>
+            <label for="editCategoryDesc{{ item.cat_id }}">Description (optional)</label>
+            <input class="form-control" type="text" name="{{ cform.editdescription.name }}" id="editCategoryDesc{{ item.cat_id }}" value="{{ item.description or '' }}" maxlength="100">
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="button button-secondary" data-dismiss="modal">Cancel</button>
+            {{ cform.editcatsubmit(class="button button-primary", value="Save changes") }}
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endfor %}
+
+{% if total_pages > 1 %}
+  <nav class="pagination-bar" aria-label="Category pages">
+    {% if page > 1 %}<a class="button button-secondary button-sm" href="{{ url_for('categories', page=page-1) }}">Previous</a>{% endif %}
+    <span>Page {{ page }} of {{ total_pages }} · {{ total }} categories</span>
+    {% if page < total_pages %}<a class="button button-secondary button-sm" href="{{ url_for('categories', page=page+1) }}">Next</a>{% endif %}
+  </nav>
+{% endif %}
+{% endblock content %}
