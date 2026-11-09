@@ -42,6 +42,7 @@ def upgrade_inventory_schema(engine):
         'product': {
             'low_stock_threshold': "INTEGER NOT NULL DEFAULT 0 CHECK (low_stock_threshold >= 0)",
             'active': "BOOLEAN NOT NULL DEFAULT 1",
+            'category_id': 'INTEGER REFERENCES category(cat_id) ON UPDATE CASCADE',
         },
         'location': {
             'active': "BOOLEAN NOT NULL DEFAULT 1",
@@ -97,6 +98,14 @@ def upgrade_inventory_schema(engine):
                     connection.execute(text(
                         f'ALTER TABLE "{table}" ADD COLUMN "{name}" {definition}'
                     ))
+                    
+            connection.execute(text(
+            'CREATE TABLE IF NOT EXISTS category ('
+            'cat_id INTEGER NOT NULL PRIMARY KEY, '
+            'cat_name VARCHAR(30) NOT NULL UNIQUE, '
+            'description VARCHAR(100), '
+            'active BOOLEAN NOT NULL DEFAULT 1)'
+        ))
 
         reserved_location = connection.execute(text(
             "SELECT loc_id FROM location WHERE lower(loc_name) = 'warehouse' LIMIT 1"
