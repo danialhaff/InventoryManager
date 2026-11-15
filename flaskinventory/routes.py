@@ -4,6 +4,9 @@ from flaskinventory.forms import addproduct,addlocation,moveproduct,editproduct,
 from flaskinventory.models import Location,Product,Movement,Balance
 import time,datetime
 from sqlalchemy.exc import IntegrityError
+from flaskinventory.models import Feedback
+from flaskinventory.forms import feedbackform
+from flask import redirect, url_for
 
 
 @app.route("/Overview")
@@ -134,8 +137,14 @@ def move():
         elif boolbeans == 'no prod':
             flash(f'Not enough products in this loaction .Please add products', 'danger')
         else:
-            mov = Movement(ts=timestamp,frm=form.src.data,to = form.destination.data,
-                           pname=form.mprodname.data,pqty=form.mprodqty.data)
+            product_name = eval(form.mprodname.data)[0]
+            mov = Movement(
+                ts=timestamp,
+                frm=form.src.data,
+                to=form.destination.data,
+                pname=product_name,
+                pqty=form.mprodqty.data
+                )
             db.session.add(mov)
             db.session.commit()
             flash(f'Your  activity has been added!', 'success')
@@ -147,6 +156,12 @@ def check(frm,to,name,qty):
         a = 'same'
         return a
     elif frm =='Warehouse' and to != 'Warehouse':
+        print("BEFORE =", name)
+
+        name = eval(name)[0]
+
+        print("AFTER =", name)
+
         prodq = Product.query.filter_by(prod_name=name).first()
         if prodq.prod_qty >= qty:
             prodq.prod_qty-= qty
@@ -167,6 +182,12 @@ def check(frm,to,name,qty):
             return 'no prod'
         else:
             if bal.quantity >= qty:
+                print("BEFORE =", name)
+
+                name = eval(name)[0]
+
+                print("AFTER =", name)
+
                 prodq = Product.query.filter_by(prod_name=name).first()
                 prodq.prod_qty = prodq.prod_qty + qty
                 bal.quantity -= qty
@@ -215,3 +236,32 @@ def delete():
         flash(f'Your location  has been deleted!', 'success')
         return redirect(url_for('loc'))
         return render_template('loc.html',title = 'Locations')
+
+
+@app.route('/Feedback', methods=['GET', 'POST'])
+def feedback():
+
+    form = feedbackform()
+
+    if form.validate_on_submit():
+
+        fb = Feedback(
+            username=form.username.data,
+            rating=int(form.rating.data),
+            comment=form.comment.data
+        )
+
+        db.session.add(fb)
+        db.session.commit()
+
+        flash('Feedback submitted successfully!', 'success')
+
+        return redirect(url_for('feedback'))
+
+    feedbacks = Feedback.query.all()
+
+    return render_template(
+        'feedback.html',
+        form=form,
+        feedbacks=feedbacks
+    )

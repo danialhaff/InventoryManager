@@ -1,6 +1,7 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField,IntegerField,SelectField,SubmitField
 from wtforms.validators import DataRequired,NumberRange
+from wtforms import TextAreaField
 
 
 
@@ -31,3 +32,18 @@ class moveproduct(FlaskForm):
         'Destination')
     mprodqty = IntegerField('Quantity', validators=[NumberRange(min=5, max=1000000),DataRequired()])
     movesubmit = SubmitField('Move')
+
+class feedbackform(FlaskForm):
+    username = StringField('Name', validators=[DataRequired()])
+    rating = SelectField(
+        'Rating',
+        choices=[
+            ('1', '1 Star'),
+            ('2', '2 Stars'),
+            ('3', '3 Stars'),
+            ('4', '4 Stars'),
+            ('5', '5 Stars')
+        ]
+    )
+    comment = TextAreaField('Feedback', validators=[DataRequired()])
+    submit = SubmitField('Submit Feedback')
