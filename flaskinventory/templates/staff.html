@@ -1,0 +1,136 @@
+{% extends "overview.html" %}
+{% block title %}Staff{% endblock %}
+{% block section_name %}Staff{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <div class="eyebrow">TEAM</div>
+    <h1>Staff</h1>
+    <p>Assign staff to locations and record who handled each transfer. Archived staff keep their history.</p>
+  </div>
+  <button type="button" class="button button-primary" data-toggle="modal" data-target="#addStaffModal">
+    <span aria-hidden="true">＋</span> Add staff
+  </button>
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Staff members</h2>
+      <p>Who looks after each location, and how many transfers they have handled.</p>
+    </div>
+    <span class="record-count">{{ total }} staff</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table data-table">
+      <thead>
+        <tr><th>STAFF</th><th>ROLE</th><th>ASSIGNED LOCATIONS</th><th class="text-right">TRANSFERS</th><th>STATUS</th><th class="text-right">ACTIONS</th></tr>
+      </thead>
+      <tbody>
+        {% for item in details %}
+          <tr>
+            <td><span class="product-cell-mark">{{ item.staff_name[:1]|upper }}</span><strong>{{ item.staff_name }}</strong><br><span class="record-id">STF-{{ "%03d"|format(item.staff_id) }}</span></td>
+            <td>{{ item.role or '—' }}</td>
+            <td>
+              {% for location in item.locations %}
+                <span class="location-tag"><span aria-hidden="true">⌖</span> {{ location.loc_name }}{% if not location.active %} · archived{% endif %}</span>
+              {% else %}
+                <span class="record-id">Not assigned</span>
+              {% endfor %}
+            </td>
+            <td class="text-right"><span class="quantity-pill">{{ transfer_counts.get(item.staff_id, 0) }}</span></td>
+            <td>{% if item.active %}<span class="status-badge status-active">Active</span>{% else %}<span class="status-badge">Archived</span>{% endif %}</td>
+            <td class="actions-cell">
+              <div class="actions-group">
+                <button type="button" class="button button-secondary button-sm" data-toggle="modal" data-target="#editStaff{{ item.staff_id }}"><span aria-hidden="true">✎</span> Edit</button>
+                <form class="inline-form" method="post" action="{{ url_for('archive', entity_type='staff', entity_id=item.staff_id) }}" onsubmit="return confirm('{{ 'Archive' if item.active else 'Restore' }} this staff member? Their transfer history will be kept.');">
+                  {{ archive_form.csrf_token(id="archive-staff-csrf-" ~ item.staff_id) }}
+                  <input type="hidden" name="action" value="{{ 'archive' if item.active else 'restore' }}">
+                  <button type="submit" class="button {% if item.active %}button-danger{% else %}button-secondary{% endif %} button-sm">{{ 'Archive' if item.active else 'Restore' }}</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6"><div class="empty-state"><span class="empty-icon">☺</span><strong>No staff yet</strong><span>Add staff to assign them to locations and transfers.</span><button type="button" class="button button-primary" data-toggle="modal" data-target="#addStaffModal">Add your first staff member</button></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if total_pages > 1 %}
+    <nav class="pagination-bar" aria-label="Staff pages">
+      {% if page > 1 %}<a class="button button-secondary button-sm" href="{{ url_for('staff', page=page-1) }}">Previous</a>{% endif %}
+      <span>Page {{ page }} of {{ total_pages }} · {{ total }} staff</span>
+      {% if page < total_pages %}<a class="button button-secondary button-sm" href="{{ url_for('staff', page=page+1) }}">Next</a>{% endif %}
+    </nav>
+  {% endif %}
+</section>
+
+<div class="modal fade" id="addStaffModal" tabindex="-1" role="dialog" aria-labelledby="addStaffTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('staff') }}">
+        {{ form.hidden_tag() }}
+        <div class="modal-header">
+          <div><div class="eyebrow">TEAM</div><h2 class="modal-title" id="addStaffTitle">Add staff</h2></div>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+        </div>
+        <div class="modal-body">
+          <label for="{{ form.staffname.id }}">Name</label>
+          {{ form.staffname(class="form-control", placeholder="e.g. Aisyah Rahman", maxlength="40") }}
+          <label for="{{ form.role.id }}">Role (optional)</label>
+          {{ form.role(class="form-control", placeholder="e.g. Store keeper", maxlength="40") }}
+          <fieldset class="checkbox-list">
+            <legend>Assigned locations</legend>
+            {% for location in locations if location.active %}
+              <label class="checkbox-item"><input type="checkbox" name="{{ form.locations.name }}" value="{{ location.loc_id }}"> {{ location.loc_name }}</label>
+            {% else %}
+              <span class="field-hint">No active locations yet. You can assign locations later.</span>
+            {% endfor %}
+          </fieldset>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="button button-secondary" data-dismiss="modal">Cancel</button>
+          {{ form.staffsubmit(class="button button-primary", value="Save staff") }}
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% for item in details %}
+  {% set assigned_ids = item.locations|map(attribute='loc_id')|list %}
+  <div class="modal fade" id="editStaff{{ item.staff_id }}" tabindex="-1" role="dialog" aria-labelledby="editStaffTitle{{ item.staff_id }}" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <form method="post" action="{{ url_for('staff') }}">
+          {{ sform.csrf_token(id="edit-staff-csrf-" ~ item.staff_id) }}
+          <input type="hidden" name="staffid" value="{{ item.staff_id }}">
+          <div class="modal-header">
+            <div><div class="eyebrow">TEAM · STF-{{ "%03d"|format(item.staff_id) }}</div><h2 class="modal-title" id="editStaffTitle{{ item.staff_id }}">Edit staff</h2></div>
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+          </div>
+          <div class="modal-body">
+            <label for="editStaffName{{ item.staff_id }}">Name</label>
+            <input class="form-control" type="text" name="{{ sform.editstaffname.name }}" id="editStaffName{{ item.staff_id }}" value="{{ item.staff_name }}" maxlength="40" required>
+            <label for="editStaffRole{{ item.staff_id }}">Role (optional)</label>
+            <input class="form-control" type="text" name="{{ sform.editrole.name }}" id="editStaffRole{{ item.staff_id }}" value="{{ item.role }}" maxlength="40">
+            <fieldset class="checkbox-list">
+              <legend>Assigned locations</legend>
+              {% for location in locations if location.active or location.loc_id in assigned_ids %}
+                <label class="checkbox-item"><input type="checkbox" name="{{ sform.editlocations.name }}" value="{{ location.loc_id }}" {% if location.loc_id in assigned_ids %}checked{% endif %}> {{ location.loc_name }}{% if not location.active %} · archived{% endif %}</label>
+              {% else %}
+                <span class="field-hint">No active locations yet.</span>
+              {% endfor %}
+            </fieldset>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="button button-secondary" data-dismiss="modal">Cancel</button>
+            {{ sform.editstaffsubmit(class="button button-primary", value="Save changes", id="editStaffSubmit" ~ item.staff_id) }}
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endfor %}
+{% endblock content %}

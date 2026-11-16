@@ -30,6 +30,9 @@
           <a class="side-link {% if request.path == '/Location' %}active{% endif %}" href="{{ url_for('loc') }}">
             <span class="side-icon" aria-hidden="true">⌖</span> Locations
           </a>
+          <a class="side-link {% if request.path == '/Staff' %}active{% endif %}" href="{{ url_for('staff') }}">
+            <span class="side-icon" aria-hidden="true">☺</span> Staff
+          </a>
           <a class="side-link {% if request.path == '/Transfers' %}active{% endif %}" href="{{ url_for('move') }}">
             <span class="side-icon" aria-hidden="true">⇄</span> Transfers
           </a>

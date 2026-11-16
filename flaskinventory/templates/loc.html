@@ -24,13 +24,17 @@
   <div class="table-responsive">
     <table class="table data-table">
       <thead>
-        <tr><th>LOCATION</th><th>LOCATION ID</th><th>STATUS</th><th class="text-right">ACTIONS</th></tr>
+        <tr><th>LOCATION</th><th>LOCATION ID</th><th>STAFF</th><th>STATUS</th><th class="text-right">ACTIONS</th></tr>
       </thead>
       <tbody>
         {% for item in details %}
           <tr>
             <td><span class="location-avatar" aria-hidden="true">⌖</span><strong>{{ item.loc_name }}</strong></td>
             <td><span class="record-id">LOC-{{ "%03d"|format(item.loc_id) }}</span></td>
+            <td>
+              {% set active_staff = item.staff|selectattr('active')|map(attribute='staff_name')|list %}
+              {% if active_staff %}{{ active_staff|join(', ') }}{% else %}<a class="record-id" href="{{ url_for('staff') }}">Assign staff</a>{% endif %}
+            </td>
             <td>{% if item.active %}<span class="status-badge status-active">Active</span>{% else %}<span class="status-badge">Archived</span>{% endif %}</td>
             <td class="actions-cell">
               <div class="actions-group">
@@ -44,7 +48,7 @@
             </td>
           </tr>
         {% else %}
-          <tr><td colspan="4"><div class="empty-state"><span class="empty-icon">⌖</span><strong>No locations yet</strong><span>Add a location to organize and transfer stock.</span><button type="button" class="button button-primary" data-toggle="modal" data-target="#addLocationModal">Add your first location</button></div></td></tr>
+          <tr><td colspan="5"><div class="empty-state"><span class="empty-icon">⌖</span><strong>No locations yet</strong><span>Add a location to organize and transfer stock.</span><button type="button" class="button button-primary" data-toggle="modal" data-target="#addLocationModal">Add your first location</button></div></td></tr>
         {% endfor %}
       </tbody>
     </table>

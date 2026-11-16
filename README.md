@@ -20,6 +20,7 @@ cd Inventory-Manager
   2. [Archiving Products and Locations](#archiving-products-and-locations)
   3. [Moving Products](#moving-products)
   4. [Editing Products and Locations](#editing-products-and-locations)
+  5. [Staff](#staff)
 - [Built Using](#built-using)
 - [License](#license)
 ### Prerequisites
@@ -42,7 +43,7 @@ This local, single-operator system tracks warehouse and location stock, transfer
 
 ## Reports
 
-Open **Reports** to filter transfer history by inclusive start/end dates, product, and location. The totals cover all matching records, while the table is paginated. **Export CSV** downloads the full matching result set.
+Open **Reports** to filter transfer history by inclusive start/end dates, product, location, and the staff member who handled it (or unassigned transfers). The totals cover all matching records, while the table is paginated. **Export CSV** downloads the full matching result set.
 
 ## Backups and local security
 
@@ -91,6 +92,15 @@ Names can be corrected without losing the associated records. Product minimum st
 
 ![edit](https://user-images.githubusercontent.com/25857446/56446569-fb6f7600-6320-11e9-85e5-f67e6a454e26.gif)
 
+
+### Staff
+Open **Staff** to add the people who work in your locations. Each staff member has a name, an optional role, and one or more assigned locations; the **Locations** page shows who is assigned where.
+
+When you create or edit a transfer, choose who handled it under **Handled by** (or leave it Unassigned). The handler appears on the Transfers page, in Reports, and in the CSV export. If the handler isn't assigned to either end of the transfer, the app saves it and shows a note.
+
+Staff are archived rather than deleted. Archived staff keep their transfer history but can't be chosen for new transfers. Archived locations can't be given new staff. Staff don't log in; the app is still for a single local operator.
+
+On the first start after updating, the schema upgrade backs up the database and adds the staff tables. Existing transfers stay Unassigned.
 
 # Built using
 - Flask

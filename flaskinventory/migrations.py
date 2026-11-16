@@ -55,9 +55,11 @@ def upgrade_inventory_schema(engine):
             'from_location_id': 'INTEGER REFERENCES location(loc_id) ON UPDATE CASCADE',
             'to_location_id': 'INTEGER REFERENCES location(loc_id) ON UPDATE CASCADE',
             "actor": "VARCHAR(80) NOT NULL DEFAULT 'Local operator'",
+            'staff_id': 'INTEGER REFERENCES staff(staff_id) ON UPDATE CASCADE',
             'updated_at': 'DATETIME',
         },
     }
+    needs_staff_table = 'staff' not in present_tables
 
     pending = {}
     for table, columns in additions.items():
@@ -76,6 +78,7 @@ def upgrade_inventory_schema(engine):
             'ix_movement_ts_mid',
             'ix_movement_product_id',
             'ix_movement_location_date',
+            'ix_movement_staff_id',
             'trg_balance_quantity_nonnegative_insert',
             'trg_balance_quantity_nonnegative_update',
             'trg_balance_identity_required_insert',
@@ -90,8 +93,17 @@ def upgrade_inventory_schema(engine):
         existing_objects = set(connection.execute(text(
             "SELECT name FROM sqlite_master WHERE type IN ('index', 'trigger')"
         )).scalars())
-        if pending or duplicate_balances or expected_objects - existing_objects:
+        if needs_staff_table or pending or duplicate_balances or expected_objects - existing_objects:
             _backup_database(connection)
+            # The staff table must exist before movement.staff_id can reference it.
+            # The staff_location link table is created afterwards by db.create_all().
+            connection.execute(text(
+                'CREATE TABLE IF NOT EXISTS staff ('
+                'staff_id INTEGER NOT NULL PRIMARY KEY, '
+                'staff_name VARCHAR(40) NOT NULL UNIQUE, '
+                "role VARCHAR(40) NOT NULL DEFAULT '', "
+                'active BOOLEAN NOT NULL DEFAULT 1)'
+            ))
             for table, columns in pending.items():
                 for name, definition in columns.items():
                     connection.execute(text(
@@ -204,6 +216,9 @@ def upgrade_inventory_schema(engine):
         connection.execute(text(
             'CREATE INDEX IF NOT EXISTS ix_movement_location_date '
             'ON movement (from_location_id, to_location_id, ts, mid)'
+        ))
+        connection.execute(text(
+            'CREATE INDEX IF NOT EXISTS ix_movement_staff_id ON movement (staff_id)'
         ))
         connection.execute(text(
             'CREATE TRIGGER IF NOT EXISTS trg_balance_quantity_nonnegative_insert '
