@@ -191,7 +191,7 @@ h1, h2, h3, h4, h5 { color: var(--ink); }
 .stock-number-positive { background: #eaf7f0; color: #18764f; }
 
 .filter-panel { margin-bottom: 16px; padding: 18px 20px 15px; }
-.filter-grid { display: grid; grid-template-columns: repeat(4, minmax(110px, 1fr)) auto; align-items: end; gap: 13px; }
+.filter-grid { display: grid; grid-template-columns: repeat(5, minmax(110px, 1fr)) auto; align-items: end; gap: 13px; }
 .filter-actions { display: flex; gap: 7px; }
 .report-summary { display: flex; align-items: center; gap: 22px; margin: 0 0 15px; padding: 13px 18px; border: 1px solid #e9edf3; border-radius: 10px; background: #fff; color: #788496; font-size: 11px; }
 .report-summary strong { color: #293548; font-size: 13px; }
@@ -307,3 +307,10 @@ label, .form-control-label { margin-bottom: 6px; color: #566276; font-size: 11px
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
+
+/* Staff location assignment */
+.checkbox-list { margin: 14px 0 0; padding: 0; border: 0; }
+.checkbox-list legend { margin-bottom: 6px; color: #566276; font-size: 11px; font-weight: 650; }
+.checkbox-item { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; color: #374151; font-size: 12px; font-weight: 500; cursor: pointer; }
+.checkbox-item input { margin: 0; }
+td .location-tag { margin: 0 4px 4px 0; }

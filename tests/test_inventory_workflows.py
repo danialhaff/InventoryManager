@@ -18,7 +18,7 @@ os.environ['INVENTORY_DATABASE_URI'] = (
 )
 
 from flaskinventory import app, db
-from flaskinventory.models import Balance, Location, Movement, Product
+from flaskinventory.models import Balance, Location, Movement, Product, Staff
 from sqlalchemy import text
 
 
@@ -59,7 +59,10 @@ class InventoryWorkflowTests(unittest.TestCase):
         with app.app_context():
             db.session.remove()
             db.engine.dispose()
-        TEST_DATABASE_DIRECTORY.cleanup()
+        try:
+            TEST_DATABASE_DIRECTORY.cleanup()
+        except PermissionError:
+            pass
         os.environ.pop('INVENTORY_DATABASE_URI', None)
 
     def csrf_token(self, response):
@@ -242,6 +245,105 @@ class InventoryWorkflowTests(unittest.TestCase):
             self.assertFalse(Location.query.filter_by(loc_id=active_location_id).one().active)
         self.assertEqual(self.client.get('/Adjustments').status_code, 404)
         self.assertEqual(self.client.get('/Audit').status_code, 404)
+
+    def test_staff_assignment_to_locations_and_transfers(self):
+        product_id, location_id = self.create_product_and_location()
+
+        response = self.client.get('/Staff')
+        self.assertEqual(response.status_code, 200)
+        self.client.post('/Staff', data={
+            'csrf_token': self.csrf_token(response),
+            'staffname': 'TestAisyah',
+            'role': 'Store keeper',
+            'locations': [str(location_id)],
+            'staffsubmit': 'Save staff',
+        })
+        with app.app_context():
+            member = Staff.query.filter_by(staff_name='TestAisyah').one()
+            staff_id = member.staff_id
+            self.assertEqual(member.role, 'Store keeper')
+            self.assertEqual([loc.loc_id for loc in member.locations], [location_id])
+        self.assertIn(b'TestAisyah', self.client.get('/Location').data)
+
+        response = self.client.get('/Transfers')
+        self.assertIn(b'TestAisyah', response.data)
+        self.client.post('/Transfers', data={
+            'csrf_token': self.csrf_token(response),
+            'mprodname': 'TestWidget',
+            'src': 'Warehouse',
+            'destination': 'TestShelf',
+            'mprodqty': '2',
+            'staff': str(staff_id),
+            'ts': '2026-02-03T09:00',
+            'movesubmit': 'Confirm transfer',
+        })
+        with app.app_context():
+            movement = Movement.query.filter_by(product_id=product_id).one()
+            movement_id = movement.mid
+            self.assertEqual((movement.staff_id, movement.actor), (staff_id, 'TestAisyah'))
+
+        report = self.client.get(f'/Reports?product=TestWidget&staff={staff_id}')
+        self.assertIn('<strong>1</strong> movements', report.get_data(as_text=True))
+        report = self.client.get('/Reports?product=TestWidget&staff=unassigned')
+        self.assertIn('<strong>0</strong> movements', report.get_data(as_text=True))
+        exported = self.client.get(f'/Reports/export?product=TestWidget&staff={staff_id}')
+        self.assertIn(b'Handled by', exported.data)
+        self.assertIn(b'TestAisyah', exported.data)
+
+        # Renaming keeps the transfer linked and updates its recorded name.
+        response = self.client.get('/Staff')
+        self.client.post('/Staff', data={
+            'csrf_token': self.csrf_token(response),
+            'staffid': str(staff_id),
+            'editstaffname': 'TestAisyahR',
+            'editrole': '',
+            'editstaffsubmit': 'Save changes',
+        })
+        with app.app_context():
+            member = Staff.query.filter_by(staff_id=staff_id).one()
+            self.assertEqual((member.staff_name, member.role, member.locations), ('TestAisyahR', '', []))
+            self.assertEqual(Movement.query.filter_by(mid=movement_id).one().actor, 'TestAisyahR')
+
+        # Archived staff keep history but cannot take new transfers.
+        response = self.client.get('/Staff')
+        self.client.post(f'/Archive/staff/{staff_id}', data={
+            'csrf_token': self.csrf_token(response),
+            'action': 'archive',
+            'submit': 'Confirm',
+        })
+        with app.app_context():
+            self.assertFalse(Staff.query.filter_by(staff_id=staff_id).one().active)
+        response = self.client.get('/Transfers')
+        self.client.post('/Transfers', data={
+            'csrf_token': self.csrf_token(response),
+            'mprodname': 'TestWidget',
+            'src': 'Warehouse',
+            'destination': 'TestShelf',
+            'mprodqty': '1',
+            'staff': str(staff_id),
+            'ts': '2026-02-03T10:00',
+            'movesubmit': 'Confirm transfer',
+        })
+        with app.app_context():
+            self.assertEqual(Movement.query.filter_by(product_id=product_id).count(), 1)
+            self.assertEqual(Product.query.filter_by(prod_id=product_id).one().prod_qty, 8)
+
+        # Editing the old transfer can keep its archived handler.
+        response = self.client.get('/Transfers')
+        self.client.post('/Transfers', data={
+            'csrf_token': self.csrf_token(response),
+            'movement_id': str(movement_id),
+            'mprodname': 'TestWidget',
+            'src': 'Warehouse',
+            'destination': 'TestShelf',
+            'mprodqty': '3',
+            'staff': str(staff_id),
+            'ts': '2026-02-03T09:00',
+            'movesubmit': 'Update transfer',
+        })
+        with app.app_context():
+            movement = Movement.query.filter_by(mid=movement_id).one()
+            self.assertEqual((movement.pqty, movement.staff_id), (3, staff_id))
 
     def test_archive_get_request_cannot_delete_records(self):
         product_id, _location_id = self.create_product_and_location()

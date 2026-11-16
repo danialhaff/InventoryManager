@@ -10,13 +10,18 @@ from flaskinventory import app, db
 from flaskinventory.forms import (
     addlocation,
     addproduct,
+    addstaff,
     archiveform,
     deletemovement,
     editlocation,
     editproduct,
+    editstaff,
     moveproduct,
 )
-from flaskinventory.models import Balance, Location, Movement, Product
+from flaskinventory.models import Balance, Location, Movement, Product, Staff
+
+
+DEFAULT_ACTOR = 'Local operator'
 
 
 PAGE_SIZE = 25
@@ -263,6 +268,81 @@ def loc():
     )
 
 
+def _staff_location_choices(*fields):
+    locations = Location.query.order_by(Location.active.desc(), Location.loc_name).all()
+    for field in fields:
+        field.choices = [(location.loc_id, location.loc_name) for location in locations]
+
+
+def _assignable_locations(location_ids, current_locations=()):
+    """Return the chosen locations, refusing archived ones unless already assigned."""
+    current_ids = {location.loc_id for location in current_locations}
+    chosen = Location.query.filter(Location.loc_id.in_(location_ids)).all() if location_ids else []
+    blocked = [
+        location.loc_name for location in chosen
+        if not location.active and location.loc_id not in current_ids
+    ]
+    return chosen, blocked
+
+
+@app.route('/Staff', methods=['GET', 'POST'])
+def staff():
+    form, sform, archive_form = addstaff(), editstaff(), archiveform()
+    _staff_location_choices(form.locations, sform.editlocations)
+    if request.method == 'POST':
+        staff_id = request.form.get('staffid')
+        if staff_id and sform.validate_on_submit():
+            member = Staff.query.filter_by(staff_id=staff_id).first()
+            if member is None:
+                flash('The staff member could not be found. Refresh and try again.', 'danger')
+                return redirect(url_for('staff'))
+            chosen, blocked = _assignable_locations(sform.editlocations.data, member.locations)
+            if blocked:
+                flash('Archived locations cannot get new staff: ' + ', '.join(blocked) + '.', 'danger')
+                return redirect(url_for('staff'))
+            member.staff_name = sform.editstaffname.data.strip()
+            member.role = (sform.editrole.data or '').strip()
+            member.locations = chosen
+            Movement.query.filter_by(staff_id=member.staff_id).update(
+                {'actor': member.staff_name}, synchronize_session=False
+            )
+            return _commit_redirect(url_for('staff'), 'Staff details updated.')
+        if not staff_id and form.validate_on_submit():
+            chosen, blocked = _assignable_locations(form.locations.data)
+            if blocked:
+                flash('Archived locations cannot get new staff: ' + ', '.join(blocked) + '.', 'danger')
+                return redirect(url_for('staff'))
+            member = Staff(
+                staff_name=form.staffname.data.strip(),
+                role=(form.role.data or '').strip(),
+                locations=chosen,
+            )
+            db.session.add(member)
+            return _commit_redirect(url_for('staff'), f"Staff member '{member.staff_name}' added.")
+        for errors in (form.errors, sform.errors):
+            for field_errors in errors.values():
+                for error in field_errors:
+                    flash(error, 'danger')
+        return redirect(url_for('staff'))
+
+    members, total, page, total_pages = _page(
+        Staff.query.order_by(Staff.active.desc(), Staff.staff_name), _requested_page()
+    )
+    transfer_counts = dict(
+        db.session.query(Movement.staff_id, func.count(Movement.mid))
+        .filter(Movement.staff_id.isnot(None))
+        .group_by(Movement.staff_id)
+        .all()
+    )
+    return render_template(
+        'staff.html', title='Staff', form=form, sform=sform,
+        archive_form=archive_form, details=members,
+        locations=Location.query.order_by(Location.loc_name).all(),
+        transfer_counts=transfer_counts,
+        total=total, page=page, total_pages=total_pages,
+    )
+
+
 def _commit_redirect(endpoint, message):
     try:
         db.session.commit()
@@ -315,7 +395,15 @@ def _movement_choices(form, movement=None):
     form.destination.choices = [('Warehouse', 'Warehouse')] + [
         (location.loc_name, location.loc_name) for location in destination_locations
     ]
-    return products, locations
+    staff_members = Staff.query.filter_by(active=True).order_by(Staff.staff_name).all()
+    staff_choices = list(staff_members)
+    if movement and movement.staff_ref and movement.staff_ref not in staff_choices:
+        # Keep an archived staff member selectable on the transfer they already handled.
+        staff_choices.append(movement.staff_ref)
+    form.staff.choices = [('', 'Unassigned')] + [
+        (str(member.staff_id), member.staff_name) for member in staff_choices
+    ]
+    return products, locations, staff_members
 
 
 def _location_has_stock(location):
@@ -327,7 +415,7 @@ def move():
     form = moveproduct()
     movement_id = request.form.get('movement_id') if request.method == 'POST' else None
     movement = Movement.query.filter_by(mid=movement_id).first() if movement_id else None
-    products, all_locations = _movement_choices(form, movement)
+    products, all_locations, staff_members = _movement_choices(form, movement)
 
     if request.method == 'POST':
         if movement_id and movement is None:
@@ -343,6 +431,13 @@ def move():
         if product is None:
             flash('The selected product is no longer available.', 'danger')
             return redirect(url_for('move'))
+        handler = None
+        if form.staff.data:
+            handler = Staff.query.filter_by(staff_id=int(form.staff.data)).first()
+            kept_existing = bool(movement and handler and movement.staff_id == handler.staff_id)
+            if handler is None or (not handler.active and not kept_existing):
+                flash('Archived staff cannot be assigned to transfers. Choose an active staff member.', 'danger')
+                return redirect(url_for('move'))
         if movement:
             success, message = _apply_transfer(
                 movement.to, movement.frm, movement.pname, movement.pqty
@@ -379,6 +474,8 @@ def move():
             movement.pname = product.prod_name
             movement.pqty = form.mprodqty.data
             movement.ts = form.ts.data
+            movement.staff_id = handler.staff_id if handler else None
+            movement.actor = handler.staff_name if handler else DEFAULT_ACTOR
             movement.updated_at = datetime.datetime.now()
             message = 'Transfer updated and stock balances adjusted.'
         else:
@@ -391,9 +488,18 @@ def move():
                 to=destination,
                 pname=product.prod_name,
                 pqty=form.mprodqty.data,
+                staff_id=handler.staff_id if handler else None,
+                actor=handler.staff_name if handler else DEFAULT_ACTOR,
             )
             db.session.add(movement)
             message = 'Transfer recorded successfully.'
+        if handler:
+            covered = {location.loc_name for location in handler.locations}
+            if not covered.intersection({source, destination}):
+                flash(
+                    f"Note: {handler.staff_name} is not assigned to {source} or {destination}.",
+                    'warning',
+                )
         return _commit_redirect(url_for('move'), message)
 
     details, total, page, total_pages = _page(
@@ -407,7 +513,7 @@ def move():
     return render_template(
         'move.html', title='Transfers', form=form, delete_form=deletemovement(),
         details=details, products=products, locations=all_locations,
-        stock_map=stock_map, total=total, page=page, total_pages=total_pages,
+        staff_members=staff_members, stock_map=stock_map, total=total, page=page, total_pages=total_pages,
     )
 
 
@@ -461,6 +567,7 @@ def _filtered_movement_query():
     end_date = request.args.get('end_date', '').strip()
     product = request.args.get('product', '').strip()
     location = request.args.get('location', '').strip()
+    staff_filter = request.args.get('staff', '').strip()
     errors = []
     start, end = None, None
     try:
@@ -494,12 +601,19 @@ def _filtered_movement_query():
                     Movement.from_location_id == loc.loc_id,
                     Movement.to_location_id == loc.loc_id,
                 ))
-    return query, errors, start_date, end_date, product, location
+    if staff_filter:
+        if staff_filter == 'unassigned':
+            query = query.filter(Movement.staff_id.is_(None))
+        elif staff_filter.isdigit() and Staff.query.filter_by(staff_id=int(staff_filter)).first():
+            query = query.filter(Movement.staff_id == int(staff_filter))
+        else:
+            errors.append('Choose a valid staff member.')
+    return query, errors, start_date, end_date, product, location, staff_filter
 
 
 @app.route('/Reports')
 def reports():
-    query, errors, start_date, end_date, product, location = _filtered_movement_query()
+    query, errors, start_date, end_date, product, location, staff_filter = _filtered_movement_query()
     aggregate = (query.with_entities(
         func.count(Movement.mid), func.coalesce(func.sum(Movement.pqty), 0)
     ).first() if not errors else (0, 0))
@@ -511,8 +625,9 @@ def reports():
         'reports.html', title='Reports', details=details,
         products=Product.query.order_by(Product.prod_name).all(),
         locations=Location.query.order_by(Location.loc_name).all(),
+        staff_members=Staff.query.order_by(Staff.active.desc(), Staff.staff_name).all(),
         errors=errors, start_date=start_date, end_date=end_date,
-        selected_product=product, selected_location=location,
+        selected_product=product, selected_location=location, selected_staff=staff_filter,
         total_movements=aggregate[0], total_quantity=aggregate[1],
         total=total, page=page, total_pages=total_pages,
     )
@@ -527,19 +642,19 @@ def _csv_safe(value):
 
 @app.route('/Reports/export')
 def export_report():
-    query, errors, start_date, end_date, product, location = _filtered_movement_query()
+    query, errors, start_date, end_date, product, location, staff_filter = _filtered_movement_query()
     if errors:
         for error in errors:
             flash(error, 'danger')
         return redirect(url_for(
             'reports', start_date=start_date, end_date=end_date,
-            product=product, location=location,
+            product=product, location=location, staff=staff_filter,
         ))
 
     def rows():
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(['Movement ID', 'Timestamp', 'From', 'To', 'Product', 'Quantity'])
+        writer.writerow(['Movement ID', 'Timestamp', 'From', 'To', 'Product', 'Quantity', 'Handled by'])
         yield output.getvalue()
         output.seek(0)
         output.truncate(0)
@@ -548,6 +663,7 @@ def export_report():
                 movement.mid, movement.ts.strftime('%Y-%m-%d %H:%M:%S'),
                 _csv_safe(movement.frm), _csv_safe(movement.to),
                 _csv_safe(movement.pname), movement.pqty,
+                _csv_safe(movement.actor if movement.staff_id else 'Unassigned'),
             ])
             yield output.getvalue()
             output.seek(0)
@@ -559,32 +675,34 @@ def export_report():
     )
 
 
+ARCHIVABLE = {
+    # entity_type: (model, primary key column, page endpoint, message suffix)
+    'product': (Product, 'prod_id', 'product', 'without removing its stock or history.'),
+    'location': (Location, 'loc_id', 'loc', 'without removing its stock or history.'),
+    'staff': (Staff, 'staff_id', 'staff', 'without removing their transfer history.'),
+}
+
+
 @app.route('/Archive/<entity_type>/<int:entity_id>', methods=['POST'])
 def archive(entity_type, entity_id):
+    if entity_type not in ARCHIVABLE:
+        flash('Unknown record type.', 'danger')
+        return redirect(url_for('overview'))
+    model, key, endpoint, suffix = ARCHIVABLE[entity_type]
     form = archiveform()
     if not form.validate_on_submit():
         flash('Could not verify the archive request. Refresh and try again.', 'danger')
-        return redirect(url_for('product' if entity_type == 'product' else 'loc'))
+        return redirect(url_for(endpoint))
     action = request.form.get('action')
     if action not in ('archive', 'restore'):
         flash('Choose a valid archive action and try again.', 'danger')
-        return redirect(url_for('product' if entity_type == 'product' else 'loc'))
-    model = Product if entity_type == 'product' else Location if entity_type == 'location' else None
-    if model is None:
-        flash('Unknown record type.', 'danger')
-        return redirect(url_for('overview'))
-    item = (
-        Product.query.filter_by(prod_id=entity_id).first()
-        if entity_type == 'product'
-        else Location.query.filter_by(loc_id=entity_id).first()
-    )
+        return redirect(url_for(endpoint))
+    item = model.query.filter_by(**{key: entity_id}).first()
     if item is None:
         flash('That record could not be found.', 'danger')
-        return redirect(url_for('product' if entity_type == 'product' else 'loc'))
+        return redirect(url_for(endpoint))
     archive_action = action == 'archive'
     item.active = not archive_action
-    verb = 'Archived' if archive_action else 'Restored'
-    return _commit_redirect(
-        url_for('product' if entity_type == 'product' else 'loc'),
-        f"{entity_type.title()} {verb.lower()} without removing its stock or history.",
-    )
+    verb = 'archived' if archive_action else 'restored'
+    label = 'Staff member' if entity_type == 'staff' else entity_type.title()
+    return _commit_redirect(url_for(endpoint), f"{label} {verb} {suffix}")

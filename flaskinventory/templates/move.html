@@ -24,7 +24,7 @@
   <div class="table-responsive">
     <table class="table data-table">
       <thead>
-        <tr><th>TRANSFER</th><th>ROUTE</th><th>PRODUCT</th><th class="text-right">QUANTITY</th><th class="text-right">ACTIONS</th></tr>
+        <tr><th>TRANSFER</th><th>ROUTE</th><th>PRODUCT</th><th>HANDLED BY</th><th class="text-right">QUANTITY</th><th class="text-right">ACTIONS</th></tr>
       </thead>
       <tbody>
         {% for item in details %}
@@ -32,6 +32,7 @@
             <td><strong>{{ item.ts.strftime('%b %d, %Y') }}</strong><br><span class="record-id">{{ item.ts.strftime('%H:%M') }} · #{{ item.mid }}</span></td>
             <td><span class="movement-route">{{ item.frm }}<span class="route-arrow">→</span>{{ item.to }}</span></td>
             <td><span class="product-cell-mark">{{ item.pname[:1]|upper }}</span><strong>{{ item.pname }}</strong></td>
+            <td>{% if item.staff_ref %}{{ item.staff_ref.staff_name }}{% if not item.staff_ref.active %} <span class="status-badge">Archived</span>{% endif %}{% else %}<span class="record-id">Unassigned</span>{% endif %}</td>
             <td class="text-right"><span class="quantity-pill">{{ "{:,}".format(item.pqty) }}</span><span class="quantity-unit">units</span></td>
             <td class="actions-cell">
               <div class="actions-group">
@@ -44,7 +45,7 @@
             </td>
           </tr>
         {% else %}
-          <tr><td colspan="5"><div class="empty-state"><span class="empty-icon">⇄</span><strong>No transfers recorded</strong><span>When you move stock, your activity will appear here.</span><button type="button" class="button button-primary" data-toggle="modal" data-target="#moveProductModal">Create a transfer</button></div></td></tr>
+          <tr><td colspan="6"><div class="empty-state"><span class="empty-icon">⇄</span><strong>No transfers recorded</strong><span>When you move stock, your activity will appear here.</span><button type="button" class="button button-primary" data-toggle="modal" data-target="#moveProductModal">Create a transfer</button></div></td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -97,6 +98,16 @@
                 </select>
               </div>
             </div>
+            <label for="editTransferStaff{{ item.mid }}">Handled by</label>
+            <select class="form-control" id="editTransferStaff{{ item.mid }}" name="{{ form.staff.name }}">
+              <option value="" {% if not item.staff_id %}selected{% endif %}>Unassigned</option>
+              {% for member in staff_members %}
+                <option value="{{ member.staff_id }}" {% if item.staff_id == member.staff_id %}selected{% endif %}>{{ member.staff_name }}</option>
+              {% endfor %}
+              {% if item.staff_ref and not item.staff_ref.active %}
+                <option value="{{ item.staff_id }}" selected>{{ item.staff_ref.staff_name }} · archived</option>
+              {% endif %}
+            </select>
             <label for="editTransferTime{{ item.mid }}">Transfer date and time</label>
             <input class="form-control" type="datetime-local" id="editTransferTime{{ item.mid }}" name="{{ form.ts.name }}" value="{{ item.ts.strftime('%Y-%m-%dT%H:%M') }}" step="60" required>
             <label for="editTransferQuantity{{ item.mid }}">Quantity to move</label>
@@ -137,6 +148,9 @@
               {{ form.destination(class="form-control") }}
             </div>
           </div>
+          <label for="{{ form.staff.id }}">Handled by</label>
+          {{ form.staff(class="form-control") }}
+          {% if not staff_members %}<span class="field-hint">Add staff on the <a href="{{ url_for('staff') }}">Staff page</a> to record who handled transfers.</span>{% endif %}
           <label for="{{ form.ts.id }}">Transfer date and time</label>
           {{ form.ts(class="form-control", type="datetime-local", step="60", required=True) }}
           <label for="{{ form.mprodqty.id }}">Quantity to move</label>

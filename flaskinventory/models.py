@@ -2,6 +2,33 @@ from flaskinventory import db
 from datetime import datetime
 from sqlalchemy import UniqueConstraint
 
+
+# Many-to-many link: a staff member can cover several locations and a
+# location can have several staff members.
+staff_location = db.Table(
+    'staff_location',
+    db.Column('staff_id', db.Integer, db.ForeignKey('staff.staff_id', ondelete='CASCADE'), primary_key=True),
+    db.Column('loc_id', db.Integer, db.ForeignKey('location.loc_id', ondelete='CASCADE'), primary_key=True),
+)
+
+
+class Staff(db.Model):
+    staff_id = db.Column(db.Integer, primary_key=True)
+    staff_name = db.Column(db.String(40), unique=True, nullable=False)
+    role = db.Column(db.String(40), nullable=False, default='', server_default='')
+    active = db.Column(db.Boolean, nullable=False, default=True, server_default='1')
+
+    locations = db.relationship(
+        'Location',
+        secondary=staff_location,
+        order_by='Location.loc_name',
+        backref=db.backref('staff', order_by='Staff.staff_name'),
+    )
+
+    def __repr__(self):
+        return f"Staff('{self.staff_id}','{self.staff_name}')"
+
+
 class Location(db.Model):
     loc_id = db.Column(db.Integer, primary_key= True)
     loc_name = db.Column(db.String(20),unique = True, nullable = False)
@@ -35,6 +62,7 @@ class Movement(db.Model):
     pname = db.Column(db.String(20), nullable = False)
     pqty = db.Column(db.Integer, nullable = False)
     actor = db.Column(db.String(80), nullable=False, default='Local operator', server_default='Local operator')
+    staff_id = db.Column(db.Integer, db.ForeignKey('staff.staff_id', onupdate='CASCADE'), index=True)
     updated_at = db.Column(db.DateTime)
     __table_args__ = (
         db.CheckConstraint('pqty > 0', name='ck_movement_positive_quantity'),
@@ -43,6 +71,7 @@ class Movement(db.Model):
     product_ref = db.relationship('Product', foreign_keys=[product_id])
     from_location_ref = db.relationship('Location', foreign_keys=[from_location_id])
     to_location_ref = db.relationship('Location', foreign_keys=[to_location_id])
+    staff_ref = db.relationship('Staff', foreign_keys=[staff_id])
 
     def __repr__(self):
         return f"Movement('{self.mid}','{self.ts}','{self.frm}','{self.to}','{self.pname}','{self.pqty}')"

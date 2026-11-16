@@ -56,7 +56,7 @@ class SchemaMigrationTests(unittest.TestCase):
         return path
 
     def test_migration_backs_up_and_merges_duplicate_balances(self):
-        with tempfile.TemporaryDirectory(prefix='inventory-schema-test-') as directory:
+        with tempfile.TemporaryDirectory(prefix='inventory-schema-test-', ignore_cleanup_errors=True) as directory:
             path = self.create_legacy_database(directory)
             engine = create_engine('sqlite:///' + str(path).replace('\\', '/'))
             try:
@@ -71,6 +71,14 @@ class SchemaMigrationTests(unittest.TestCase):
                     self.assertEqual(tuple(balance), (1, 1, 1, 7))
                     self.assertEqual(tuple(movement), (1, None, 1))
                     self.assertEqual(connection.execute(text('PRAGMA foreign_key_check')).all(), [])
+                    self.assertIn('staff', inspect(connection).get_table_names())
+                    self.assertIn(
+                        'staff_id',
+                        {column['name'] for column in inspect(connection).get_columns('movement')},
+                    )
+                db.metadata.create_all(engine)
+                with engine.connect() as connection:
+                    self.assertIn('staff_location', inspect(connection).get_table_names())
 
                 backups = list(Path(directory).glob('legacy.pre-inventory-upgrade-*.db'))
                 self.assertEqual(len(backups), 1)
@@ -81,7 +89,7 @@ class SchemaMigrationTests(unittest.TestCase):
                 engine.dispose()
 
     def test_invalid_legacy_reference_rolls_back_migration(self):
-        with tempfile.TemporaryDirectory(prefix='inventory-schema-test-') as directory:
+        with tempfile.TemporaryDirectory(prefix='inventory-schema-test-', ignore_cleanup_errors=True) as directory:
             path = self.create_legacy_database(directory, include_orphan=True)
             engine = create_engine('sqlite:///' + str(path).replace('\\', '/'))
             try:
@@ -113,7 +121,7 @@ class SchemaMigrationTests(unittest.TestCase):
                 db.metadata.create_all(engine)
                 with engine.connect() as connection:
                     self.assertTrue({
-                        'product', 'location', 'balance', 'movement',
+                        'product', 'location', 'balance', 'movement', 'staff', 'staff_location',
                     }.issubset(set(inspect(connection).get_table_names())))
                     self.assertFalse({
                         'stock_adjustment', 'audit_log',
